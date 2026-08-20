@@ -1,0 +1,18 @@
+# 自社情報・登録番号・口座番号が入るので絶対にコミットしない
+config/company.toml
+
+# 実データ
+*.pdf
+*.db
+*.db-wal
+*.db-shm
+索引簿*.csv
+
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.DS_Store
+dist/
+build/
+*.egg-info/

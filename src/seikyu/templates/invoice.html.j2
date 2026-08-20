@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>{{ invoice.invoice_number }} {{ order.buyer.name }}</title>
+<style>
+  @page { size: A4; margin: 13mm 14mm 12mm; }
+
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic",
+                 "Noto Sans JP", sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+    margin: 0;
+    font-feature-settings: "palt";
+  }
+  table { border-collapse: collapse; width: 100%; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .center { text-align: center; }
+  .muted { color: #666; }
+  .small { font-size: 9pt; }
+
+  h1 {
+    font-size: 20pt;
+    letter-spacing: 0.5em;
+    text-indent: 0.5em;
+    text-align: center;
+    margin: 0 0 4mm;
+    font-weight: 600;
+  }
+
+  /* ---- ヘッダー（宛先／自社） ---- */
+  .head { display: flex; justify-content: space-between; gap: 10mm; margin-bottom: 5mm; }
+  .head > div { flex: 1 1 0; }
+
+  .buyer .name {
+    font-size: 14pt;
+    font-weight: 600;
+    border-bottom: 1.2px solid #1a1a1a;
+    padding-bottom: 1.5mm;
+    margin-bottom: 2mm;
+    display: block;
+  }
+  .buyer .addr { font-size: 9.5pt; color: #444; }
+  .lead { margin-top: 4mm; font-size: 10pt; }
+
+  .issuer { text-align: right; position: relative; }
+  .issuer .meta { margin-bottom: 3mm; font-size: 9.5pt; }
+  .issuer .meta span { display: inline-block; min-width: 5em; margin-right: 0.9em; color: #666; }
+  .issuer .cname { font-size: 12pt; font-weight: 600; }
+  .issuer .reg {
+    font-size: 9.5pt;
+    letter-spacing: 0.02em;
+    background: #f2f4f7;
+    padding: 0.6mm 2mm;
+    border-radius: 2px;
+    display: inline-block;
+    margin: 1mm 0;
+  }
+  .issuer .lines { font-size: 9.5pt; color: #444; }
+  .seal { position: absolute; right: 0; bottom: -6mm; width: 22mm; opacity: 0.9; }
+
+  /* ---- 請求金額 ---- */
+  .total-box {
+    display: flex;
+    align-items: baseline;
+    gap: 6mm;
+    border: 1.5px solid #1a1a1a;
+    border-radius: 2px;
+    padding: 3mm 5mm;
+    margin-bottom: 4mm;
+  }
+  .total-box .label { font-size: 11pt; font-weight: 600; letter-spacing: 0.15em; }
+  .total-box .value { font-size: 19pt; font-weight: 700; margin-left: auto; }
+  .total-box .value small { font-size: 11pt; font-weight: 500; margin-left: 1mm; }
+
+  .facts { margin-bottom: 3.5mm; font-size: 10pt; }
+  .facts th {
+    text-align: left; font-weight: 500; color: #666;
+    width: 6em; padding: 0.7mm 0; vertical-align: top;
+  }
+  .facts td { padding: 0.7mm 0; }
+
+  /* ---- 明細 ---- */
+  table.items { margin-bottom: 3.5mm; }
+  table.items th {
+    background: #1a1a1a; color: #fff; font-weight: 500; font-size: 9.5pt;
+    padding: 1.5mm 2.5mm; text-align: left;
+  }
+  table.items th.num, table.items th.center { text-align: right; }
+  table.items th.center { text-align: center; }
+  table.items td {
+    padding: 1.4mm 2.5mm; border-bottom: 0.5px solid #d8dce2; vertical-align: top;
+  }
+  table.items tr:last-child td { border-bottom: 1px solid #1a1a1a; }
+  table.items .note { color: #666; font-size: 8.5pt; display: block; }
+  .mark { color: #b25000; font-weight: 600; }
+
+  /* ---- 合計欄 ---- */
+  .totals { display: flex; justify-content: flex-end; gap: 8mm; margin-bottom: 4mm;
+            page-break-inside: avoid; }
+  .breakdown { font-size: 9pt; color: #444; min-width: 62mm; }
+  .breakdown caption {
+    text-align: left; font-weight: 600; color: #1a1a1a;
+    padding-bottom: 1mm; font-size: 9.5pt;
+  }
+  .breakdown th { text-align: left; font-weight: 400; padding: 0.8mm 2mm 0.8mm 0; }
+  .breakdown td { padding: 0.8mm 0; }
+  .breakdown tr + tr th, .breakdown tr + tr td { border-top: 0.5px solid #e3e6ea; }
+
+  .sums { width: 72mm; }
+  .sums th {
+    text-align: left; font-weight: 400; color: #444; padding: 1.2mm 2mm 1.2mm 0;
+  }
+  .sums td { padding: 1.2mm 0; }
+  .sums tr.grand th, .sums tr.grand td {
+    border-top: 1.2px solid #1a1a1a; font-weight: 700; font-size: 12pt; padding-top: 2mm;
+  }
+  .sums tr.wh td, .sums tr.wh th { color: #b00020; }
+
+  /* ---- 下部ブロック（振込先と備考は横に並べて 1 枚に収める） ---- */
+  .foot { display: flex; gap: 4mm; align-items: flex-start; }
+  .foot > .block { flex: 1 1 0; margin-bottom: 0; min-width: 0; }
+  .block { border: 0.8px solid #c9ced6; border-radius: 2px; padding: 2.5mm 3.5mm;
+           margin-bottom: 3mm; page-break-inside: avoid; }
+  .block h2 {
+    font-size: 9.5pt; font-weight: 600; margin: 0 0 1.5mm;
+    letter-spacing: 0.08em; color: #444;
+  }
+  .bank td { padding: 0.4mm 0; font-size: 10pt; }
+  .bank td:first-child { color: #666; width: 6em; font-size: 9.5pt; }
+  .notes { white-space: pre-wrap; font-size: 9.5pt; }
+  footer { margin-top: 3mm; font-size: 8.5pt; color: #888; }
+</style>
+</head>
+<body>
+
+<h1>{{ settings.title }}</h1>
+
+<div class="head">
+  <div class="buyer">
+    {% if order.buyer.postal_code or order.buyer.address %}
+    <div class="addr">
+      {% if order.buyer.postal_code %}〒{{ order.buyer.postal_code }}<br>{% endif %}
+      {{ order.buyer.address }}
+    </div>
+    {% endif %}
+    <span class="name">{{ order.buyer.name }}　{{ order.buyer.honorific }}</span>
+    {% if order.buyer.department or order.buyer.contact %}
+    <div class="small muted">
+      {{ order.buyer.department }}{% if order.buyer.department and order.buyer.contact %}　{% endif %}
+      {% if order.buyer.contact %}{{ order.buyer.contact }} 様{% endif %}
+    </div>
+    {% endif %}
+    <p class="lead">下記のとおりご請求申し上げます。</p>
+  </div>
+
+  <div class="issuer">
+    <div class="meta">
+      <div><span>請求書番号</span>{{ invoice.invoice_number }}</div>
+      <div><span>発行日</span>{{ invoice.issue_date | jpdate }}</div>
+      {% if order.po_number %}
+      <div><span>発注書番号</span>{{ order.po_number }}</div>
+      {% endif %}
+    </div>
+    <div class="cname">{{ company.name }}</div>
+    <div class="reg">登録番号 {{ company.registration_number }}</div>
+    {# 住所は必須記載事項ではない。空なら行ごと出さず、詰めて表示する #}
+    <div class="lines">
+      {% if company.postal_code %}<div>〒{{ company.postal_code }}</div>{% endif %}
+      {% if company.address %}
+      <div>{{ company.address }}{% if company.building %} {{ company.building }}{% endif %}</div>
+      {% endif %}
+      {% if company.tel %}<div>TEL {{ company.tel }}</div>{% endif %}
+      {% if company.email %}<div>{{ company.email }}</div>{% endif %}
+      {% if company.representative %}<div>担当 {{ company.representative }}</div>{% endif %}
+    </div>
+    {% if seal %}<img class="seal" src="{{ seal }}" alt="">{% endif %}
+  </div>
+</div>
+
+<div class="total-box">
+  <span class="label">ご請求金額</span>
+  <span class="value">¥ {{ invoice.total | yen }}<small>（税込）</small></span>
+</div>
+
+<table class="facts">
+  {% if order.subject %}
+  <tr><th>件名</th><td>{{ order.subject }}</td></tr>
+  {% endif %}
+  <tr><th>支払期限</th><td>{{ invoice.due_date | jpdate }}{% if terms %}　<span class="muted small">（{{ terms }}）</span>{% endif %}</td></tr>
+  {% if order.delivery_date %}
+  <tr><th>納品日</th><td>{{ order.delivery_date | jpdate }}</td></tr>
+  {% endif %}
+</table>
+
+<table class="items">
+  <thead>
+    <tr>
+      <th style="width:auto">品目・内容</th>
+      <th class="num" style="width:16mm">数量</th>
+      <th class="center" style="width:14mm">単位</th>
+      <th class="num" style="width:26mm">単価</th>
+      <th class="num" style="width:30mm">金額</th>
+      {% if multi_rate %}<th class="center" style="width:14mm">税率</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr>
+      <td>
+        {{ row.item.name }}{% if row.reduced %} <span class="mark">※</span>{% endif %}
+        {% if row.item.note %}<span class="note">{{ row.item.note }}</span>{% endif %}
+      </td>
+      <td class="num">{{ row.item.quantity | qty }}</td>
+      <td class="center">{{ row.item.unit }}</td>
+      <td class="num">{{ row.item.unit_price | yen }}</td>
+      <td class="num">{{ row.amount | yen }}</td>
+      {% if multi_rate %}
+      <td class="center">{{ (row.item.tax_rate * 100) | int }}%</td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="totals">
+  <table class="breakdown">
+    <caption>税率ごとの内訳</caption>
+    {% for bucket in invoice.buckets %}
+    <tr>
+      <th>{{ bucket.label }}対象{% if bucket.is_reduced %}（軽減）{% endif %} 税抜</th>
+      <td class="num">{{ bucket.net | yen }}</td>
+    </tr>
+    <tr>
+      <th>　消費税額</th>
+      <td class="num">{{ bucket.tax | yen }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <table class="sums">
+    <tr><th>小計（税抜）</th><td class="num">{{ invoice.subtotal | yen }}</td></tr>
+    <tr><th>消費税</th><td class="num">{{ invoice.tax_total | yen }}</td></tr>
+    {% if invoice.withholding %}
+    <tr class="wh"><th>源泉徴収税額</th><td class="num">△{{ invoice.withholding | yen }}</td></tr>
+    {% endif %}
+    <tr class="grand"><th>合計</th><td class="num">¥ {{ invoice.total | yen }}</td></tr>
+  </table>
+</div>
+
+{% if invoice.has_reduced %}
+<p class="small mark">※ は軽減税率（8%）対象品目です。</p>
+{% endif %}
+
+<div class="foot">
+  {% if bank.filled %}
+  <div class="block">
+    <h2>お振込先</h2>
+    <table class="bank">
+      <tr><td>金融機関</td><td>{{ bank.bank_name }}　{{ bank.branch_name }}</td></tr>
+      <tr><td>口座</td><td>{{ bank.account_type }}　{{ bank.account_number }}</td></tr>
+      <tr><td>口座名義</td><td>{{ bank.account_holder }}</td></tr>
+    </table>
+    {% if bank.note %}<p class="small muted" style="margin:1.5mm 0 0">{{ bank.note }}</p>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if order.notes %}
+  <div class="block">
+    <h2>備考</h2>
+    <div class="notes">{{ order.notes }}</div>
+  </div>
+  {% endif %}
+</div>
+
+<footer>{{ company.name }}　{{ invoice.invoice_number }}</footer>
+
+</body>
+</html>
