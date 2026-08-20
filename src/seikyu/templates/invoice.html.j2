@@ -166,7 +166,12 @@
       {% endif %}
     </div>
     <div class="cname">{{ company.name }}</div>
+    {% if company.registration_number %}
     <div class="reg">登録番号 {{ company.registration_number }}</div>
+    {% else %}
+    {# 免税事業者。適格請求書ではないことを発行側で明示しておく #}
+    <div class="reg">適格請求書発行事業者ではありません（免税事業者）</div>
+    {% endif %}
     {# 住所は必須記載事項ではない。空なら行ごと出さず、詰めて表示する #}
     <div class="lines">
       {% if company.postal_code %}<div>〒{{ company.postal_code }}</div>{% endif %}
@@ -239,6 +244,13 @@
       <td class="num">{{ bucket.tax | yen }}</td>
     </tr>
     {% endfor %}
+    {% if company.is_exempt %}
+    <tr>
+      <td colspan="2" class="small muted" style="padding-top:1.5mm; line-height:1.5">
+        当方は消費税の免税事業者です。本書は適格請求書（インボイス）ではありません。
+      </td>
+    </tr>
+    {% endif %}
   </table>
 
   <table class="sums">

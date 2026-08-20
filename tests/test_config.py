@@ -87,3 +87,99 @@ def test_paths_are_expanded(tmp_path):
     cfg = config_mod.load(target)
     assert cfg.output.root.is_absolute()
     assert "~" not in str(cfg.output.root)
+
+
+# ---- 免税事業者モード（インボイス未登録） -------------------------------
+
+
+def _write(tmp_path, body: str):
+    target = tmp_path / "company.toml"
+    target.write_text(body, encoding="utf-8")
+    return target
+
+
+BANK = '[bank]\nbank_name = "三井住友銀行"\naccount_number = "1234567"\n'
+
+
+def test_exempt_issuer_needs_no_registration_number(tmp_path):
+    """免税事業者は適格請求書を発行できないので、登録番号なしで発行できる。"""
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n' + BANK,
+    )
+    cfg = config_mod.load(target)
+    assert cfg.company.is_exempt
+    assert cfg.validate() == []
+
+
+def test_exempt_issuer_with_registration_number_is_contradiction(tmp_path):
+    """登録番号を持っているのに exempt を名乗るのは矛盾なので止める。"""
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n'
+        'registration_number = "T1234567890123"\n' + BANK,
+    )
+    problems = config_mod.load(target).validate()
+    assert any("矛盾" in p or "設定されています" in p for p in problems)
+
+
+def test_exempt_issuer_cannot_title_it_qualified_invoice(tmp_path):
+    """免税事業者が「適格請求書」と題した書類を出さないよう止める。"""
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n'
+        + BANK
+        + '[invoice]\ntitle = "適格請求書"\n',
+    )
+    problems = config_mod.load(target).validate()
+    assert any("適格" in p for p in problems)
+
+
+def test_taxable_issuer_still_requires_registration_number(tmp_path):
+    """既定は課税事業者。登録番号がなければ従来どおり止め、exempt への誘導を出す。"""
+    target = _write(tmp_path, '[company]\nname = "株式会社ABC"\n' + BANK)
+    problems = config_mod.load(target).validate()
+    assert any("registration_number" in p for p in problems)
+    assert any("exempt" in p for p in problems)
+
+
+def test_unknown_tax_status_is_rejected(tmp_path):
+    target = _write(
+        tmp_path, '[company]\nname = "山本 寛幸"\ntax_status = "免税"\n' + BANK
+    )
+    assert any("tax_status" in p for p in config_mod.load(target).validate())
+
+
+def test_exempt_issuer_is_warned_when_charging_consumption_tax(tmp_path):
+    """免税でも税率10%で出せるが、取引先の控除が制限される点を知らせる。"""
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n'
+        + BANK
+        + "[invoice]\ndefault_tax_rate = 0.10\n",
+    )
+    cfg = config_mod.load(target)
+    assert cfg.validate() == []
+    assert any("経過措置" in w for w in cfg.warnings())
+
+
+def test_exempt_issuer_with_zero_rate_has_no_tax_warning(tmp_path):
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n'
+        + BANK
+        + "[invoice]\ndefault_tax_rate = 0.0\n",
+    )
+    cfg = config_mod.load(target)
+    assert cfg.validate() == []
+    assert not any("経過措置" in w for w in cfg.warnings())
+
+
+def test_exempt_placeholder_check_ignores_registration_number(tmp_path):
+    """exempt では登録番号が空なのが正しいので、ダミー値扱いにしない。"""
+    target = _write(
+        tmp_path,
+        '[company]\nname = "山本 寛幸"\ntax_status = "exempt"\n' + BANK,
+    )
+    problems = config_mod.load(target).validate()
+    assert not any("ダミー値" in p for p in problems)
