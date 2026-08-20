@@ -37,10 +37,17 @@ class ConfigError(RuntimeError):
     pass
 
 
+#: 消費税の課税区分。
+#:   taxable … 適格請求書発行事業者（登録番号あり）。適格請求書を発行できる
+#:   exempt  … 免税事業者（登録番号なし）。適格請求書は発行できないため通常の請求書を出す
+TAX_STATUSES = ("taxable", "exempt")
+
+
 @dataclass
 class Company:
     name: str
     registration_number: str
+    tax_status: str = "taxable"
     postal_code: str = ""
     address: str = ""
     building: str = ""
@@ -48,6 +55,11 @@ class Company:
     email: str = ""
     representative: str = ""
     seal_image: str = ""
+
+    @property
+    def is_exempt(self) -> bool:
+        """免税事業者（インボイス未登録）か。適格請求書を発行できない。"""
+        return self.tax_status == "exempt"
 
 
 @dataclass
@@ -121,15 +133,33 @@ class Config:
         problems: list[str] = []
         if not self.company.name:
             problems.append("[company] name（自社名）が未設定です")
-        if not self.company.registration_number:
+        if self.company.tax_status not in TAX_STATUSES:
             problems.append(
-                "[company] registration_number（適格請求書発行事業者の登録番号）が未設定です"
+                f"[company] tax_status は taxable / exempt のいずれか: {self.company.tax_status}"
             )
-        elif not REGISTRATION_RE.match(self.company.registration_number):
-            problems.append(
-                f"[company] registration_number が T+13桁の形式ではありません: "
-                f"{self.company.registration_number}"
-            )
+        elif self.company.is_exempt:
+            # 免税事業者は適格請求書を発行できない。登録番号があるのは矛盾なので止める
+            if self.company.registration_number:
+                problems.append(
+                    "[company] tax_status = \"exempt\"（免税事業者）なのに registration_number が"
+                    "設定されています。登録番号を持っているなら tax_status = \"taxable\" にしてください。"
+                )
+            if "適格" in self.invoice.title:
+                problems.append(
+                    f"[invoice] title に「適格」が入っています（{self.invoice.title}）。"
+                    "免税事業者は適格請求書を発行できません。「請求書」にしてください。"
+                )
+        else:
+            if not self.company.registration_number:
+                problems.append(
+                    "[company] registration_number（適格請求書発行事業者の登録番号）が未設定です。"
+                    "インボイス未登録なら [company] tax_status = \"exempt\" にしてください。"
+                )
+            elif not REGISTRATION_RE.match(self.company.registration_number):
+                problems.append(
+                    f"[company] registration_number が T+13桁の形式ではありません: "
+                    f"{self.company.registration_number}"
+                )
         # 自社住所は適格請求書の必須記載事項ではないので、空でも止めない（warnings 参照）
         if not self.bank.filled:
             problems.append("[bank] 振込先（bank_name / account_number）が未設定です")
@@ -150,7 +180,6 @@ class Config:
             label
             for label, value in (
                 ("[company] name", self.company.name),
-                ("[company] registration_number", self.company.registration_number),
                 ("[company] postal_code", self.company.postal_code),
                 ("[company] address", self.company.address),
                 ("[bank] bank_name", self.bank.bank_name),
@@ -160,6 +189,8 @@ class Config:
             )
             if value in PLACEHOLDERS
         ]
+        if not self.company.is_exempt and self.company.registration_number in PLACEHOLDERS:
+            untouched.insert(1, "[company] registration_number")
         if untouched:
             problems.append(
                 "ひな形のダミー値のままの項目があります（"
@@ -177,6 +208,19 @@ class Config:
                 "このまま発行できます（請求書にも出しません）。"
                 "取引先から記載を求められたら埋めてください。"
             )
+        if self.company.is_exempt:
+            notes.append(
+                "[company] tax_status = \"exempt\"（免税事業者）で発行します。"
+                "登録番号は印字せず、適格請求書ではない旨を請求書に明記します。"
+            )
+            if self.invoice.default_tax_rate > 0:
+                notes.append(
+                    f"[invoice] default_tax_rate が {self.invoice.default_tax_rate} です。"
+                    "免税事業者が消費税相当額を請求すること自体は可能ですが、取引先の仕入税額控除は"
+                    "経過措置により一部に制限されます（控除割合は時期により変わるため、"
+                    "取引先と金額の建て方を先に合意してください）。"
+                    "税率0%で発行するなら default_tax_rate = 0.0 にします。"
+                )
         if not self.company.tel and not self.company.email:
             notes.append(
                 "[company] tel / email がどちらも空です。請求書に問い合わせ先が載りません。"
@@ -203,6 +247,7 @@ def load(path: Path | str | None = None) -> Config:
     company = Company(
         name=str(c.get("name", "")).strip(),
         registration_number=str(c.get("registration_number", "")).strip().upper(),
+        tax_status=str(c.get("tax_status", "taxable")).strip().lower(),
         postal_code=str(c.get("postal_code", "")).strip(),
         address=str(c.get("address", "")).strip(),
         building=str(c.get("building", "")).strip(),
