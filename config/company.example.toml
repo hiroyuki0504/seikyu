@@ -1,0 +1,79 @@
+# seikyu 設定ファイル
+#   cp config/company.example.toml config/company.toml
+# としてコピーし、自社の情報を記入してください。
+# company.toml は .gitignore 済みです（登録番号・口座は git に入れません）。
+
+[company]
+# ---- ここは適格請求書の必須記載事項です。空だと発行できません ----
+name = "株式会社〇〇"
+# 適格請求書発行事業者の登録番号。T + 13桁。
+# 国税庁の公表サイトで確認できます: https://www.invoice-kohyo.nta.go.jp/
+registration_number = "T0000000000000"
+postal_code = "000-0000"
+address = "東京都〇〇区〇〇 1-2-3"
+
+# ---- ここから下は任意 ----
+building = ""           # ビル名・階
+tel = ""
+email = ""
+representative = ""     # 請求書に出す担当者名
+seal_image = ""         # 角印の画像パス（PNG推奨）。空なら印影なし
+
+[bank]
+# 振込先。ここも空だと発行を止めます（振込先のない請求書は使えないため）
+bank_name = "〇〇銀行"
+branch_name = "〇〇支店"
+account_type = "普通"
+account_number = "0000000"
+account_holder = "カ)〇〇"
+note = "恐れ入りますが、振込手数料は貴社にてご負担願います。"
+
+[invoice]
+title = "請求書"
+# 請求書番号の書式。{year}=西暦4桁 / {yy}=下2桁 / {seq}=年ごとの連番
+number_format = "INV-{year}-{seq:04d}"
+default_tax_rate = 0.10
+# 消費税の端数処理。floor(切捨) / ceil(切上) / round(四捨五入)
+# インボイス制度では「一の請求書につき税率ごとに1回」だけ端数処理できます。
+rounding = "floor"
+# 源泉徴収を常に行うか。false でも、発注書に源泉の記載があれば自動で適用します。
+withholding = false
+# 源泉徴収の計算基礎。net=税抜 / gross=税込
+# 消費税額が請求書で明確に区分されていれば税抜(net)を基礎にできます。
+withholding_base = "net"
+
+[payment]
+# 支払期限の計算。31 は「月末」の意味。
+closing_day = 31        # 締め日
+month_offset = 1        # 締めから何ヶ月後に支払うか（1 = 翌月）
+payment_day = 31        # 支払日
+# 支払日が土日祝のときの調整。none / before(前営業日) / after(翌営業日)
+business_day_adjust = "none"
+# 請求書に印字する支払条件の文言。空なら上の設定から自動生成します。
+terms_label = ""
+
+[output]
+# 請求書 PDF の保存先
+root = "~/Documents/請求書"
+# root 配下のフォルダ構成。使える変数: {year} {month} {buyer} {invoice_number}
+layout = "{year}/{year}-{month}"
+# ファイル名。使える変数: {invoice_number} {buyer} {date} {total} {subject}
+filename = "{invoice_number}_{buyer}_{date}_{total}"
+# 元の発注書も請求書の隣にコピーしておくか
+keep_source = true
+
+[watch]
+# `seikyu watch` が見張るフォルダ
+inbox = "~/Documents/請求書/_発注書受信"
+processed = "~/Documents/請求書/_処理済み"
+failed = "~/Documents/請求書/_要確認"
+
+[api]
+# 発注書の読み取りに使うモデル。
+#   claude-opus-5   … 既定。読み取り精度が最も高い（$5 / $25 per 1M tokens）
+#   claude-sonnet-5 … 費用を抑えたい場合（$3 / $15。2026-08-31 まで $2 / $10）
+model = "claude-opus-5"
+# 思考の深さ。low / medium / high / xhigh / max
+effort = "high"
+# 1リクエストあたりの出力上限。明細が多い発注書で足りなければ増やす。
+max_tokens = 16000
